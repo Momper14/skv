@@ -20,7 +20,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/boltdb/bolt"
+	bolt "go.etcd.io/bbolt"
 )
 
 // KVStore represents the key value store. Use the Open() method to create
@@ -52,19 +52,21 @@ func Open(path string) (*KVStore, error) {
 	opts := &bolt.Options{
 		Timeout: 50 * time.Millisecond,
 	}
-	if db, err := bolt.Open(path, 0640, opts); err != nil {
+	db, err := bolt.Open(path, 0640, opts)
+	if err != nil {
 		return nil, err
-	} else {
-		err := db.Update(func(tx *bolt.Tx) error {
-			_, err := tx.CreateBucketIfNotExists(bucketName)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		} else {
-			return &KVStore{db: db}, nil
-		}
 	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(bucketName)
+		return err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &KVStore{db: db}, nil
 }
 
 // Put an entry into the store. The passed value is gob-encoded and stored.
@@ -135,9 +137,8 @@ func (kvs *KVStore) Delete(key string) error {
 		c := tx.Bucket(bucketName).Cursor()
 		if k, _ := c.Seek([]byte(key)); k == nil || string(k) != key {
 			return ErrNotFound
-		} else {
-			return c.Delete()
 		}
+		return c.Delete()
 	})
 }
 

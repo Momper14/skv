@@ -151,35 +151,51 @@ func TestNil(t *testing.T) {
 }
 
 func TestGoroutines(t *testing.T) {
+	var (
+		N    = 1000
+		wg   sync.WaitGroup
+		errs = make(chan error, N)
+	)
+
 	os.Remove("skv-test.db")
 	db, err := Open("skv-test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rand.Seed(time.Now().UnixNano())
-	var wg sync.WaitGroup
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
+
 			switch rand.Intn(3) {
 			case 0:
 				if err := db.Put("key1", "value1"); err != nil {
-					t.Fatal(err)
+					errs <- err
 				}
 			case 1:
 				var val string
 				if err := db.Get("key1", &val); err != nil && err != ErrNotFound {
-					t.Fatal(err)
+					errs <- err
 				}
 			case 2:
 				if err := db.Delete("key1"); err != nil && err != ErrNotFound {
-					t.Fatal(err)
+					errs <- err
 				}
 			}
-			wg.Done()
 		}()
 	}
-	wg.Wait()
+
+	go func() {
+		wg.Wait()
+		close(errs)
+	}()
+
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func BenchmarkPut(b *testing.B) {
